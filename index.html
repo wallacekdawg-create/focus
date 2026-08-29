@@ -23,7 +23,28 @@
   <div id="__bundler_loading">Unpacking...</div>
 
   <script>
-    
+// Patch for standalone deployment: intercept navigation and use bundled pages
+window.__bundler_pages = {};
+window.__bundler_interceptNavigation = function(newLocation) {
+  // Check if this is an internal page navigation
+  for (const pageUuid of Object.keys(window.__bundler_pages || {})) {
+    if (newLocation && newLocation.includes && newLocation.includes(pageUuid.slice(0, 8))) {
+      window.__bundler_loadPage?.(pageUuid);
+      return true;
+    }
+  }
+  return false;
+};
+
+// Override history.pushState to intercept nav
+const originalPushState = history.pushState;
+history.pushState = function(...args) {
+  originalPushState.apply(history, args);
+  if (args[2] && window.__bundler_interceptNavigation(args[2])) {
+    window.dispatchEvent(new PopStateEvent('popstate'));
+  }
+};
+
 document.addEventListener('DOMContentLoaded', async function() {
   const loading = document.getElementById('__bundler_loading');
   function setStatus(msg) { if (loading) loading.textContent = msg; }
@@ -212,6 +233,9 @@ document.addEventListener('DOMContentLoaded', async function() {
 
     const uuids = Object.keys(manifest);
     setStatus('Unpacking ' + uuids.length + ' assets...');
+
+    // Store pages globally for debugging and navigation
+    window.__bundler_pages = pageTexts;
 
     await Promise.all(uuids.map(async (uuid) => {
       const entry = manifest[uuid];
